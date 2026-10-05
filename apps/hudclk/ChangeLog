@@ -1,0 +1,3 @@
+0.01: First release
+0.02: New layout (hours over minutes), optional custom digit font from hudclk.font.json
+0.03: Layout tweaks for wider custom digits

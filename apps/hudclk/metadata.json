@@ -1,0 +1,35 @@
+{
+  "id": "hudclk",
+  "name": "HUD Clock",
+  "shortName": "HUD Clock",
+  "version": "0.03",
+  "description": "Sci-fi HUD style clock: big digits, dotted grid, orbit minute marker, steps ring, battery, heart rate and Bluetooth link status. Optional custom digit font via hudclk.font.json",
+  "icon": "app.png",
+  "screenshots": [
+    {
+      "url": "screenshot.png"
+    }
+  ],
+  "type": "clock",
+  "tags": "clock",
+  "supports": [
+    "BANGLEJS2"
+  ],
+  "allow_emulator": true,
+  "storage": [
+    {
+      "name": "hudclk.app.js",
+      "url": "app.js"
+    },
+    {
+      "name": "hudclk.img",
+      "url": "app-icon.js",
+      "evaluate": true
+    }
+  ],
+  "data": [
+    {
+      "name": "hudclk.font.json"
+    }
+  ]
+}
