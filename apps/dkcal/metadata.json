@@ -1,0 +1,14 @@
+{ "id": "dkcal",
+  "name": "Daily kcal",
+  "shortName": "Daily kcal",
+  "version": "0.01",
+  "description": "Approximate calories since midnight: Mifflin-St Jeor BMR by clock time plus activity from steps and heart rate reserve (Health records), without double counting",
+  "icon": "app.png",
+  "tags": "health",
+  "supports": ["BANGLEJS2"],
+  "dependencies": {"health":"app"},
+  "storage": [
+    {"name":"dkcal.app.js","url":"app.js"},
+    {"name":"dkcal.img","url":"app-icon.js","evaluate":true}
+  ]
+}
