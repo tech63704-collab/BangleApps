@@ -10,7 +10,7 @@
   {"code":"nl_NL","name":"Dutch","url":"nl_NL.json"},
   {"code":"sv_SE","name":"Swedish","url":"sv_SE.json"},
   {"code":"tr_TR","name":"Turkish","url":"tr_TR.json"},
-  {"code":"ru_RU","name":"Russian","url":"ru_RU.json", "disabled":"Characters not in ISO Latin codepage"},
+  {"code":"ru_RU","name":"Russian (beta)","url":"ru_RU.json"},
   {"code":"pt_PT","name":"Portuguese","url":"pt_PT.json"},
   {"code":"pt_BR","name":"Portuguese Brasil","url":"pt_BR.json"},
   {"code":"bg_BG","name":"Bulgarian","url":"bg_BG.json", "disabled":"Characters not in ISO Latin codepage"},
