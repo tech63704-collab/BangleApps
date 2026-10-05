@@ -35,7 +35,7 @@
     if (cfg.mode == "EVENT") {
       if (!above && d > cfg.thr && Date.now() - lastEvt > 3000) {
         above = true; lastEvt = Date.now();
-        Bangle.buzz(30).then(() => setTimeout(() => Bangle.buzz(30), 90));
+        Bangle.buzz(50).then(() => setTimeout(() => Bangle.buzz(50), 120));
       } else if (above && d < cfg.thr * 0.7) above = false;
     }
   };
@@ -45,7 +45,8 @@
     let next = 200;
     if (state == "run" && cfg.mode == "GEIGER") {
       const ex = Math.abs(dev()) - cfg.thr;
-      if (ex > 0) { Bangle.buzz(12); next = Math.max(60, 600 / (1 + ex / cfg.thr * 3)); }
+      // 40 ms pulse: long enough for the vibration motor to spin up; log scale keeps huge fields distinguishable
+      if (ex > 0) { Bangle.buzz(40); next = Math.max(140, 900 / (1 + Math.log(1 + ex / cfg.thr))); }
     }
     gTmr = setTimeout(geiger, next);
   };
