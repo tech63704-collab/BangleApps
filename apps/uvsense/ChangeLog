@@ -1,3 +1,4 @@
 0.01: First release
 0.02: Removed background fetching (caused freezes); fetch only while app is open
 0.03: Own 20 s watchdog so 'updating' can never hang; button always exits
+0.04: Removed Bangle.http entirely (froze watch); reads UV from Gadgetbridge weather data

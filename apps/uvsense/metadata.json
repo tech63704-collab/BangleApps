@@ -2,15 +2,15 @@
   "id": "uvsense",
   "name": "UV Sense",
   "shortName": "UV Sense",
-  "version": "0.03",
-  "description": "UV index for Aktobe from Open-Meteo via Bangle.js Gadgetbridge. Fetches when the app is open (tap to refresh); vibration length reflects the UV level.",
+  "version": "0.04",
+  "description": "UV index pushed by Gadgetbridge weather (no network requests from the watch). Shows current UV and today's hourly history; vibration length reflects the level.",
   "icon": "app.png",
   "tags": "weather,tool",
   "supports": [
     "BANGLEJS2"
   ],
   "dependencies": {
-    "android": "app"
+    "weather": "app"
   },
   "storage": [
     {
