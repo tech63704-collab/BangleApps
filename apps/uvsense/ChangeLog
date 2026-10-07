@@ -4,3 +4,4 @@
 0.04: Removed Bangle.http entirely (froze watch); reads UV from Gadgetbridge weather data
 0.05: Write uvsense.json only when new weather data arrives
 0.06: Background alert (notification) when UV reaches 6 / 8 / 11, once per level per day; no network use
+0.07: Alert by own vibration pattern + opening the app over the clock (messages API was unreliable)

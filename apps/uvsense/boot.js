@@ -1,4 +1,4 @@
-// UV Sense background alert v0.06: no network. Listens for weather pushed by Gadgetbridge.
+// UV Sense background alert v0.07: no network. Listens for weather pushed by Gadgetbridge.
 (() => {
   let W; try { W = require("weather"); } catch (e) { return; }
   W.on("update", w => {
@@ -11,13 +11,13 @@
     st.cur = w.uv; st.t = w.time || Date.now();
     st.hours[d.getHours()] = Math.max(st.hours[d.getHours()], w.uv);
     const lv = w.uv >= 11 ? 3 : w.uv >= 8 ? 2 : w.uv >= 6 ? 1 : 0;   // 6 high, 8 very high, 11 extreme
-    if (lv > (st.alerted || 0)) {
-      st.alerted = lv;
-      const name = ["", "HIGH", "VERY HIGH", "EXTREME"][lv];
-      try {
-        require("messages").pushMessage({ t: "add", id: "uvsense", src: "UV Sense", title: "UV " + name, body: "UV index " + w.uv.toFixed(1) + " - sun protection" });
-      } catch (e) { Bangle.buzz(400 + lv * 200); }
-    }
+    let fire = false;
+    if (lv > (st.alerted || 0)) { st.alerted = lv; st.alertT = Date.now(); fire = true; }
     S.writeJSON(F, st);
+    if (!fire) return;
+    // 3 long pulses (more for higher level), then show the app if a clock is on screen
+    let n = 2 + lv, p = Promise.resolve();
+    while (n--) p = p.then(() => Bangle.buzz(500)).then(() => new Promise(r => setTimeout(r, 250)));
+    p.then(() => { Bangle.setLCDPower(1); if (Bangle.CLOCK) load("uvsense.app.js"); });
   });
 })();

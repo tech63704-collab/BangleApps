@@ -2,8 +2,8 @@
   "id": "uvsense",
   "name": "UV Sense",
   "shortName": "UV Sense",
-  "version": "0.06",
-  "description": "UV index pushed by Gadgetbridge weather (no network requests from the watch). Background alert via a notification when UV reaches 6, 8 and 11; app shows current UV and today's history.",
+  "version": "0.07",
+  "description": "UV index pushed by Gadgetbridge weather (no network requests from the watch). Background alert (vibration, app pops up over the clock) when UV reaches 6, 8 and 11.",
   "icon": "app.png",
   "tags": "weather,tool",
   "supports": [

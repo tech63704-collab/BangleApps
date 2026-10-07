@@ -1,4 +1,4 @@
-{ // UV Sense v0.06: no network requests; reads UV pushed by Gadgetbridge weather (weather.json)
+{ // UV Sense v0.07: no network requests; reads UV pushed by Gadgetbridge weather (weather.json)
   const S = require("Storage"), F = "uvsense.json";
   const lvl = u => u >= 11 ? 4 : u >= 8 ? 3 : u >= 6 ? 2 : u >= 3 ? 1 : 0;
   const col = u => u >= 8 ? "#f00" : u >= 6 ? "#f80" : u >= 3 ? "#ff0" : "#0f0";
@@ -23,7 +23,9 @@
     const st = read(), R = Bangle.appRect, cx = R.x + R.w / 2;
     g.reset().clearRect(R).setFontAlign(0, 0).setFont("6x8");
     if (!st) { g.drawString("No UV data from phone.\nNeed: Weather app +\nweather provider in\nGadgetbridge", cx, R.y + R.h / 2); return; }
-    g.drawString("UV index", cx, R.y + 8);
+    const al = st.alertT && Date.now() - st.alertT < 3600000 && st.alerted;
+    if (al) g.setColor("#f00").fillRect(R.x, R.y, R.x2, R.y + 16).setColor("#fff").drawString("UV " + ["", "HIGH", "VERY HIGH", "EXTREME"][st.alerted] + " - protect skin/eyes", cx, R.y + 8).setColor(g.theme.fg);
+    else g.drawString("UV index", cx, R.y + 8);
     g.setColor(col(st.cur)).setFont("Vector", 48).drawString((+st.cur).toFixed(1), cx, R.y + 40);
     const max = Math.max.apply(null, st.hours);
     g.setColor(g.theme.fg).setFont("6x8").drawString("today max " + max.toFixed(1) + "  upd " + require("locale").time(new Date(st.t), 1), cx, R.y + 72);
