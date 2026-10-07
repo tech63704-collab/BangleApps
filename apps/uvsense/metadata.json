@@ -1,0 +1,16 @@
+{ "id": "uvsense",
+  "name": "UV Sense",
+  "shortName": "UV Sense",
+  "version": "0.01",
+  "description": "UV index channel: fetches the hourly UV forecast for Aktobe from Open-Meteo via Bangle.js Gadgetbridge every 30 minutes and vibrates when the UV level changes (long pulses = level 1-4 when rising, one tick when falling).",
+  "icon": "app.png",
+  "tags": "weather,tool",
+  "supports": ["BANGLEJS2"],
+  "dependencies": {"android":"app"},
+  "storage": [
+    {"name":"uvsense.app.js","url":"app.js"},
+    {"name":"uvsense.boot.js","url":"boot.js"},
+    {"name":"uvsense.img","url":"app-icon.js","evaluate":true}
+  ],
+  "data": [{"name":"uvsense.json"}]
+}
