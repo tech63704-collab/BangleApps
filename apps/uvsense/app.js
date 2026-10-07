@@ -1,4 +1,4 @@
-{ // UV Sense v0.04: no network requests; reads UV pushed by Gadgetbridge weather (weather.json)
+{ // UV Sense v0.06: no network requests; reads UV pushed by Gadgetbridge weather (weather.json)
   const S = require("Storage"), F = "uvsense.json";
   const lvl = u => u >= 11 ? 4 : u >= 8 ? 3 : u >= 6 ? 2 : u >= 3 ? 1 : 0;
   const col = u => u >= 8 ? "#f00" : u >= 6 ? "#f80" : u >= 3 ? "#ff0" : "#0f0";
@@ -9,13 +9,13 @@
     if (!w || w.uv === undefined) return null;
     const d = new Date(), day = d.getFullYear() * 400 + d.getMonth() * 32 + d.getDate();
     let st = S.readJSON(F, 1) || {};
-    if (st.day !== day) st = { day: day, hours: [] };
+    if (st.day !== day) st = { day: day, hours: [], alerted: 0 };
     for (let i = 0; i < 24; i++) if (st.hours[i] === undefined) st.hours[i] = 0;
-    const h = d.getHours(), old = st.cur;
-    st.cur = w.uv; st.t = w.time || Date.now();
+    const h = d.getHours(), old = st.cur, t = w.time || Date.now();
+    if (st.t === t && st.hours[h] >= w.uv) return st;   // nothing new: no flash write
+    st.cur = w.uv; st.t = t;
     st.hours[h] = Math.max(st.hours[h], w.uv);
     S.writeJSON(F, st);
-    if (old !== undefined && lvl(old) !== lvl(w.uv)) Bangle.buzz(150 + lvl(w.uv) * 150);
     return st;
   };
 

@@ -2,3 +2,5 @@
 0.02: Removed background fetching (caused freezes); fetch only while app is open
 0.03: Own 20 s watchdog so 'updating' can never hang; button always exits
 0.04: Removed Bangle.http entirely (froze watch); reads UV from Gadgetbridge weather data
+0.05: Write uvsense.json only when new weather data arrives
+0.06: Background alert (notification) when UV reaches 6 / 8 / 11, once per level per day; no network use

@@ -2,8 +2,8 @@
   "id": "uvsense",
   "name": "UV Sense",
   "shortName": "UV Sense",
-  "version": "0.04",
-  "description": "UV index pushed by Gadgetbridge weather (no network requests from the watch). Shows current UV and today's hourly history; vibration length reflects the level.",
+  "version": "0.06",
+  "description": "UV index pushed by Gadgetbridge weather (no network requests from the watch). Background alert via a notification when UV reaches 6, 8 and 11; app shows current UV and today's history.",
   "icon": "app.png",
   "tags": "weather,tool",
   "supports": [
@@ -16,6 +16,10 @@
     {
       "name": "uvsense.app.js",
       "url": "app.js"
+    },
+    {
+      "name": "uvsense.boot.js",
+      "url": "boot.js"
     },
     {
       "name": "uvsense.img",
