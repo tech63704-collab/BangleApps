@@ -1,0 +1,35 @@
+{
+  "id": "uvsense",
+  "name": "UV Sense",
+  "shortName": "UV Sense",
+  "version": "0.07",
+  "description": "UV index pushed by Gadgetbridge weather (no network requests from the watch). Background alert (vibration, app pops up over the clock) when UV reaches 6, 8 and 11.",
+  "icon": "app.png",
+  "tags": "weather,tool",
+  "supports": [
+    "BANGLEJS2"
+  ],
+  "dependencies": {
+    "weather": "app"
+  },
+  "storage": [
+    {
+      "name": "uvsense.app.js",
+      "url": "app.js"
+    },
+    {
+      "name": "uvsense.boot.js",
+      "url": "boot.js"
+    },
+    {
+      "name": "uvsense.img",
+      "url": "app-icon.js",
+      "evaluate": true
+    }
+  ],
+  "data": [
+    {
+      "name": "uvsense.json"
+    }
+  ]
+}
