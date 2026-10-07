@@ -2,7 +2,7 @@
   "id": "uvsense",
   "name": "UV Sense",
   "shortName": "UV Sense",
-  "version": "0.02",
+  "version": "0.03",
   "description": "UV index for Aktobe from Open-Meteo via Bangle.js Gadgetbridge. Fetches when the app is open (tap to refresh); vibration length reflects the UV level.",
   "icon": "app.png",
   "tags": "weather,tool",

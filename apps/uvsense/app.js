@@ -1,4 +1,4 @@
-{ // UV Sense v0.02: foreground only, one request at a time
+{ // UV Sense v0.03: foreground only, hard timeout, one request at a time
   const S = require("Storage"), F = "uvsense.json";
   const URL = "https://api.open-meteo.com/v1/forecast?latitude=50.28&longitude=57.21&hourly=uv_index&timezone=auto&forecast_days=1";
   const lvl = u => u >= 11 ? 4 : u >= 8 ? 3 : u >= 6 ? 2 : u >= 3 ? 1 : 0;
@@ -25,17 +25,21 @@
     if (busy || !Bangle.http) return;
     if (!NRF.getSecurityStatus().connected) { msg = "phone not connected"; draw(); return; }
     busy = true; msg = "updating..."; draw();
-    Bangle.http(URL).then(d => {
+    let done = false;
+    const wd = setTimeout(() => { if (!done) { done = true; busy = false; msg = "no answer (20s)"; draw(); } }, 20000);
+    Bangle.http(URL, { timeout: 15000 }).then(d => {
+      if (done) return;
       const j = JSON.parse(d.resp), arr = j.hourly.uv_index.map(v => v || 0), cur = arr[new Date().getHours()];
       const old = S.readJSON(F, 1) || {};
       S.writeJSON(F, { t: Date.now(), cur: cur, max: Math.max.apply(null, arr), hours: arr });
       const L = lvl(cur), OL = old.cur === undefined ? -1 : lvl(old.cur);
       if (L !== OL) Bangle.buzz(150 + L * 150);   // longer buzz = higher level
       msg = "";
-    }).catch(e => { msg = "error: " + e; }).then(() => { busy = false; draw(); });
+    }).catch(e => { if (!done) msg = "error: " + e; }).then(() => { if (done) return; done = true; clearTimeout(wd); busy = false; draw(); });
   };
 
-  Bangle.setUI({ mode: "custom", touch: fetchUV, back: () => load(), remove: () => clearInterval(tmr) });
+  const btn = setWatch(() => load(), BTN1, { edge: "falling", repeat: true });
+  Bangle.setUI({ mode: "custom", touch: fetchUV, remove: () => { clearInterval(tmr); clearWatch(btn); } });
   Bangle.loadWidgets(); Bangle.drawWidgets();
   draw();
   setTimeout(fetchUV, 500);
