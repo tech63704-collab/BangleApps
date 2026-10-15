@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Шумовой дозиметр</title>
+<meta name="theme-color" content="#14181a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: one-column instrument panel — readout, dose, minute history, settings, reference */
+:root{
+  --bg:#eef1ef; --panel:#ffffff; --fg:#162022; --muted:#5b6a6c; --line:#d3dbd9;
+  --accent:#0f7a72; --ok:#2f8f4e; --warn:#c07d0a; --bad:#c43b2b;
+  --f-sans:"IBM Plex Sans",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#111517; --panel:#1a2023; --fg:#e4ecea; --muted:#8fa09e; --line:#2c3538;
+  --accent:#3fc2b5; --ok:#4cc172; --warn:#e9a53a; --bad:#f0604c; color-scheme:dark;}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--f-sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:max(12px,env(safe-area-inset-top,0px)) 32px}
+main{max-width:560px;margin:0 auto;display:grid;gap:14px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+h1{font-size:19px;margin:0;font-weight:600;letter-spacing:.01em}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;font-weight:600}
+.chip{font:600 12px var(--f-mono);padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.chip.on{color:var(--ok);border-color:var(--ok)}
+.chip.warn{color:var(--warn);border-color:var(--warn)}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.readout{display:grid;gap:10px}
+.big{display:flex;align-items:baseline;gap:8px;font-family:var(--f-mono)}
+.big b{font-size:64px;line-height:1;font-weight:600;font-variant-numeric:tabular-nums}
+.big span{font-size:16px;color:var(--muted)}
+.meter{position:relative;height:14px;border-radius:3px;overflow:hidden;
+  background:linear-gradient(90deg,var(--ok) 0 50%,var(--warn) 50% 72%,var(--bad) 72% 100%);opacity:.9}
+.meter i{position:absolute;top:0;bottom:0;right:0;background:var(--panel);opacity:.82;transition:left .1s linear}
+.scale{display:flex;justify-content:space-between;font:11px var(--f-mono);color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cell{border-top:1px solid var(--line);padding-top:8px;min-width:0}
+.cell small{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.cell b{font:600 22px var(--f-mono);font-variant-numeric:tabular-nums}
+.cell em{font-style:normal;font-size:12px;color:var(--muted)}
+.dosebar{height:10px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:6px}
+.dosebar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+.bad{color:var(--bad)} .warnc{color:var(--warn)} .okc{color:var(--ok)}
+canvas{width:100%;height:120px;display:block}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font:600 14px var(--f-sans);padding:10px 14px;border-radius:8px;border:1px solid var(--line);
+  background:var(--panel);color:var(--fg);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.row:first-of-type{border-top:0}
+.row label{min-width:0;flex:1 1 180px}
+.row label small{display:block;color:var(--muted);font-size:12px}
+input[type=number]{width:88px;font:600 15px var(--f-mono);padding:7px 8px;border-radius:6px;border:1px solid var(--line);
+  background:var(--bg);color:var(--fg)}
+.inl{display:flex;gap:6px;align-items:center}
+#log{font:12px var(--f-mono);color:var(--muted);display:grid;gap:3px;max-height:140px;overflow:auto}
+#msg{font-size:13px;color:var(--warn)}
+table{border-collapse:collapse;width:100%;font:13px var(--f-mono)}
+td,th{text-align:left;padding:4px 6px;border-top:1px solid var(--line)}
+th{color:var(--muted);font-weight:400}
+p.note{font-size:13px;color:var(--muted);margin:8px 0 0;max-width:65ch}
+@media (prefers-reduced-motion:reduce){.meter i,.dosebar i{transition:none}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Шумовой дозиметр</h1>
+  <div class="btns"><span class="chip" id="st">остановлен</span><span class="chip" id="calchip">без калибровки</span></div>
+</header>
+
+<section class="readout">
+  <div class="big"><b id="laf">--.-</b><span>дБ(A) · F</span></div>
+  <div class="meter"><i id="mi" style="left:0"></i></div>
+  <div class="scale"><span>30</span><span>50</span><span>70</span><span>85</span><span>100</span><span>120</span></div>
+  <div class="grid">
+    <div class="cell"><small>LAeq 1 мин</small><b id="leq1">--</b> <em>дБ(A)</em></div>
+    <div class="cell"><small>LAFmax сеанс</small><b id="lmax">--</b> <em id="clip"></em></div>
+  </div>
+</section>
+
+<section>
+  <h2>Дневная доза · NIOSH 85 дБА / 8 ч, шаг 3 дБ</h2>
+  <div class="grid">
+    <div class="cell"><small>Доза сегодня</small><b id="dose">0.0</b> <em>%</em>
+      <div class="dosebar"><i id="db"></i></div></div>
+    <div class="cell"><small>LEX,8h экв.</small><b id="lex">--</b> <em>дБ(A)</em></div>
+    <div class="cell"><small>До 100% при текущем</small><b id="rem">--</b></div>
+    <div class="cell"><small>Время ≥ 85 дБА</small><b id="t85">0</b> <em>мин</em></div>
+  </div>
+</section>
+
+<section>
+  <h2>LAeq по минутам · последний час</h2>
+  <canvas id="ch" width="600" height="120" aria-label="График уровня по минутам"></canvas>
+</section>
+
+<section class="btns" style="background:none;border:0;padding:0">
+  <button class="primary" id="go">Старт</button>
+  <button id="tn">Тест уведомления</button>
+  <button id="rs">Сбросить дозу</button>
+</section>
+<div id="msg"></div>
+
+<section>
+  <h2>Калибровка и пороги</h2>
+  <div class="row"><label for="off">Поправка микрофона, дБ<small>дБFS → дБ SPL. Без калибровки ошибка ±5–10 дБ</small></label>
+    <input type="number" id="off" step="0.5"></div>
+  <div class="row"><label for="ref">Подогнать: эталонный шумомер показывает<small>держи телефон рядом с эталоном, стабильный шум 60–90 дБА</small></label>
+    <span class="inl"><input type="number" id="ref" step="0.5" placeholder="дБА"><button id="cal">Применить</button></span></div>
+  <div class="row"><label for="th1">Тревога: LAeq за минуту ≥<small>NIOSH REL = 85 дБА</small></label>
+    <input type="number" id="th1" step="1"></div>
+  <div class="row"><label for="thp">Тревога: пик LAF ≥<small>резкий громкий звук; раз в 10 мин</small></label>
+    <input type="number" id="thp" step="1"></div>
+  <div class="row"><label>Уведомления<small id="nst">—</small></label><button id="np">Разрешить</button></div>
+</section>
+
+<section>
+  <h2>Журнал тревог сегодня</h2>
+  <div id="log"><span>пусто</span></div>
+</section>
+
+<section>
+  <h2>Справка (EBM)</h2>
+  <div style="overflow-x:auto"><table>
+    <tr><th>LAeq, дБА</th><th>Допустимо в сутки (NIOSH)</th></tr>
+    <tr><td>85</td><td>8 ч</td></tr><tr><td>88</td><td>4 ч</td></tr><tr><td>91</td><td>2 ч</td></tr>
+    <tr><td>94</td><td>1 ч</td></tr><tr><td>97</td><td>30 мин</td></tr><tr><td>100</td><td>15 мин</td></tr>
+    <tr><td>103</td><td>7,5 мин</td></tr><tr><td>106</td><td>3,75 мин</td></tr>
+  </table></div>
+  <p class="note">NIOSH REL 85 дБА·8 ч с шагом 3 дБ: при таком уровне за 40 лет риск профессиональной тугоухости около 8%. ВОЗ (досуг): 80 дБ — 40 ч в неделю, 70 дБ LAeq,24h — нет риска для слуха. Пиковый предел 140 дБ(C) телефон измерить не может: микрофон перегружается примерно на 110–120 дБ (метка «клип»). В дозу идут только уровни от 80 дБА (порог NIOSH).</p>
+</section>
+</main>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const LS={get(k,d){try{const v=localStorage.getItem('nd_'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+          set(k,v){try{localStorage.setItem('nd_'+k,JSON.stringify(v))}catch(e){}}};
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()};
+const cfg=Object.assign({off:110,cal:false,th1:85,thp:105},LS.get('cfg',{}));
+let day=LS.get('day',null);
+function newDay(){day={d:today(),dose:0,s85:0,hist:[],log:[],a50:false,a100:false};}
+if(!day||day.d!==today())newDay();
+const saveCfg=()=>LS.set('cfg',cfg), saveDay=()=>LS.set('day',day);
+
+$('off').value=cfg.off;$('th1').value=cfg.th1;$('thp').value=cfg.thp;
+$('off').onchange=e=>{cfg.off=+e.target.value||0;cfg.cal=true;saveCfg();calUI()};
+$('th1').onchange=e=>{cfg.th1=+e.target.value||85;saveCfg()};
+$('thp').onchange=e=>{cfg.thp=+e.target.value||105;saveCfg()};
+function calUI(){const c=$('calchip');c.textContent=cfg.cal?'откалиброван':'без калибровки';c.className='chip'+(cfg.cal?' on':' warn')}
+calUI();
+
+/* ---------- notifications ---------- */
+let swReg=null;
+if('serviceWorker' in navigator&&location.protocol==='https:'){
+  navigator.serviceWorker.register('noise-sw.js').then(r=>swReg=r).catch(()=>{});
+}
+function nUI(){const p=('Notification' in window)?Notification.permission:'нет поддержки';
+  $('nst').textContent=p==='granted'?'разрешены → Gadgetbridge → часы':p==='denied'?'запрещены в настройках Chrome':p==='default'?'не запрошены':p;
+  $('np').hidden=p!=='default'}
+nUI();
+$('np').onclick=async()=>{try{await Notification.requestPermission()}catch(e){}nUI()};
+const lastA={};
+async function alertN(key,title,body,cool){
+  const now=Date.now();
+  if(cool&&lastA[key]&&now-lastA[key]<cool)return;
+  lastA[key]=now;
+  const t=new Date().toTimeString().slice(0,5);
+  day.log.unshift(t+'  '+title+(body?' — '+body:''));day.log=day.log.slice(0,50);saveDay();renderLog();
+  try{navigator.vibrate&&navigator.vibrate([400,150,400])}catch(e){}
+  if(!('Notification' in window)||Notification.permission!=='granted'){$('msg').textContent='Уведомления не разрешены: тревога только на экране.';return}
+  const opt={body,tag:'noise-'+key,renotify:true,vibrate:[400,150,400]};
+  try{
+    const r=swReg||(navigator.serviceWorker&&await navigator.serviceWorker.getRegistration());
+    if(r)await r.showNotification(title,opt);else new Notification(title,opt);
+  }catch(e){$('msg').textContent='Не удалось показать уведомление: '+e.message}
+}
+function renderLog(){const l=$('log');l.innerHTML='';
+  if(!day.log.length){l.innerHTML='<span>пусто</span>';return}
+  day.log.forEach(s=>{const d=document.createElement('div');d.textContent=s;l.appendChild(d)})}
+renderLog();
+$('tn').onclick=async()=>{if('Notification' in window&&Notification.permission==='default'){try{await Notification.requestPermission()}catch(e){}nUI()}
+  alertN('test','Шум: тест','Проверка доставки на часы',0)};
+
+/* ---------- audio ---------- */
+const WORKLET=`class M extends AudioWorkletProcessor{
+ constructor(){super();this.a=1-Math.exp(-1/(0.125*sampleRate));this.y=0;this.e=0;this.n=0;this.fm=0;this.pk=0;this.N=Math.round(sampleRate/10)}
+ process(ins){const A=ins[0]&&ins[0][0],R=ins[1]&&ins[1][0];
+  if(A){for(let i=0;i<A.length;i++){const s=A[i]*A[i];this.e+=s;this.y+=this.a*(s-this.y);if(this.y>this.fm)this.fm=this.y}this.n+=A.length}
+  if(R){for(let i=0;i<R.length;i++){const v=R[i]<0?-R[i]:R[i];if(v>this.pk)this.pk=v}}
+  if(this.n>=this.N){this.port.postMessage({e:this.e,n:this.n,fm:this.fm,pk:this.pk});this.e=0;this.n=0;this.fm=0;this.pk=0}
+  return true}}
+registerProcessor('noise-meter',M);`;
+let ctx=null,stream=null,node=null,wake=null,fs=48000;
+const db=x=>x>0?10*Math.log10(x)+cfg.off:-Infinity;
+const Q=lin=>20*Math.log10(lin); // WebAudio LP/HP Q is in dB
+async function start(){
+  $('msg').textContent='';
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}});
+  }catch(e){$('msg').textContent='Нет доступа к микрофону: '+e.message;return}
+  ctx=new AudioContext();fs=ctx.sampleRate;
+  const blob=URL.createObjectURL(new Blob([WORKLET],{type:'application/javascript'}));
+  try{await ctx.audioWorklet.addModule(blob)}catch(e){$('msg').textContent='AudioWorklet не поддерживается: '+e.message;stop();return}
+  const src=ctx.createMediaStreamSource(stream);
+  // A-weighting (IEC 61672): poles 20.6 Hz ×2, 107.7 + 737.9 Hz, 12194 Hz ×2
+  const f=(type,fr,q)=>{const b=ctx.createBiquadFilter();b.type=type;b.frequency.value=fr;b.Q.value=Q(q);return b};
+  const w1=Math.sqrt(107.7*737.9);
+  const h1=f('highpass',20.6,0.5),h2=f('highpass',w1,w1/(107.7+737.9)),l1=f('lowpass',12194,0.5);
+  const g=ctx.createGain();
+  const fq=new Float32Array([1000]),m=new Float32Array(1),p=new Float32Array(1);let k=1;
+  [h1,h2,l1].forEach(b=>{b.getFrequencyResponse(fq,m,p);k*=m[0]});
+  g.gain.value=1/k;
+  node=new AudioWorkletNode(ctx,'noise-meter',{numberOfInputs:2,numberOfOutputs:1,outputChannelCount:[1]});
+  src.connect(h1);h1.connect(h2);h2.connect(l1);l1.connect(g);g.connect(node,0,0);src.connect(node,0,1);
+  const mute=ctx.createGain();mute.gain.value=0;node.connect(mute);mute.connect(ctx.destination);
+  node.port.onmessage=ev=>onBlock(ev.data);
+  const s=stream.getAudioTracks()[0].getSettings?stream.getAudioTracks()[0].getSettings():{};
+  if(s.autoGainControl||s.noiseSuppression)$('msg').textContent='Внимание: телефон не отключил AGC/шумодав, показания занижены.';
+  try{wake=await navigator.wakeLock.request('screen')}catch(e){}
+  $('st').textContent='измеряет';$('st').className='chip on';$('go').textContent='Стоп';
+}
+function stop(){
+  try{stream&&stream.getTracks().forEach(t=>t.stop())}catch(e){}
+  try{ctx&&ctx.close()}catch(e){}
+  try{wake&&wake.release()}catch(e){}
+  ctx=stream=node=wake=null;
+  $('st').textContent='остановлен';$('st').className='chip';$('go').textContent='Старт';saveDay();
+}
+$('go').onclick=()=>ctx?stop():start();
+document.addEventListener('visibilitychange',async()=>{if(ctx&&document.visibilityState==='visible'){try{wake=await navigator.wakeLock.request('screen')}catch(e){}}});
+
+/* ---------- metering ---------- */
+let curMin=null,minE=0,minN=0,sesMax=-Infinity,recent=[],lastLaf=-Infinity,cal1s=[];
+const T=L=>480*60/Math.pow(2,(L-85)/3); // allowed seconds at L
+function onBlock(b){
+  if(day.d!==today()){newDay();renderLog()}
+  const dt=b.n/fs, L=db(b.e/b.n), laf=db(b.fm);
+  lastLaf=laf;
+  if(L>=80)day.dose+=dt/T(L)*100;
+  if(L>=85)day.s85+=dt;
+  recent.push([b.e,b.n]);if(recent.length>600)recent.shift(); // ~60 s
+  cal1s.push(b.e/b.n);if(cal1s.length>30)cal1s.shift();
+  if(laf>sesMax)sesMax=laf;
+  if(b.pk>=0.98)$('clip').textContent='клип';
+  const mk=Math.floor(Date.now()/60000);
+  if(curMin===null)curMin=mk;
+  if(mk!==curMin){
+    if(minN>fs*20){const lm=db(minE/minN);day.hist.push([curMin,+lm.toFixed(1)]);day.hist=day.hist.slice(-180);
+      if(lm>=cfg.th1)alertN('leq','Шум '+lm.toFixed(0)+' дБА','LAeq за минуту ≥ '+cfg.th1,15*60000);}
+    curMin=mk;minE=0;minN=0;saveDay();drawChart();
+  }
+  minE+=b.e;minN+=b.n;
+  if(laf>=cfg.thp)alertN('pk','Пик шума '+laf.toFixed(0)+' дБА','LAF ≥ '+cfg.thp,10*60000);
+  if(day.dose>=50&&!day.a50){day.a50=true;saveDay();alertN('d50','Шум: доза 50%','NIOSH 85 дБА/8ч',0)}
+  if(day.dose>=100&&!day.a100){day.a100=true;saveDay();alertN('d100','Шум: доза 100%','Дневная норма исчерпана, защити слух',0)}
+  render();
+}
+let lastR=0;
+function render(){
+  const now=performance.now();if(now-lastR<120)return;lastR=now;
+  $('laf').textContent=isFinite(lastLaf)?lastLaf.toFixed(1):'--.-';
+  const pos=Math.max(0,Math.min(1,(lastLaf-30)/90));$('mi').style.left=(pos*100)+'%';
+  let e=0,n=0;recent.forEach(r=>{e+=r[0];n+=r[1]});const l1=n?db(e/n):-Infinity;
+  const c=(el,v)=>{el.className=v>=85?'bad':v>=70?'warnc':''};
+  $('leq1').textContent=isFinite(l1)?l1.toFixed(1):'--';c($('leq1'),l1);
+  $('lmax').textContent=isFinite(sesMax)?sesMax.toFixed(1):'--';
+  const d=day.dose;$('dose').textContent=d<10?d.toFixed(1):d.toFixed(0);
+  $('dose').className=d>=100?'bad':d>=50?'warnc':'';
+  $('db').style.width=Math.min(100,d)+'%';$('db').style.background=d>=100?'var(--bad)':d>=50?'var(--warn)':'var(--accent)';
+  $('lex').textContent=d>0.01?(85+10*Math.log10(d/100)).toFixed(1):'--';
+  $('t85').textContent=Math.floor(day.s85/60);
+  if(isFinite(l1)&&l1>=80&&d<100){const s=T(l1)*(100-d)/100;$('rem').textContent=s>=3600?(s/3600).toFixed(1)+' ч':Math.round(s/60)+' мин'}
+  else $('rem').textContent=d>=100?'исчерпано':'∞';
+}
+$('cal').onclick=()=>{
+  const r=+$('ref').value;
+  if(!ctx||!cal1s.length){$('msg').textContent='Сначала нажми «Старт» и подожди 3 секунды.';return}
+  if(!r){$('msg').textContent='Введи показание эталонного шумомера в дБА.';return}
+  const m=cal1s.reduce((a,b)=>a+b,0)/cal1s.length;
+  cfg.off=+(r-10*Math.log10(m)).toFixed(1);cfg.cal=true;$('off').value=cfg.off;saveCfg();calUI();
+  $('msg').textContent='Поправка = '+cfg.off+' дБ. Уже накопленная доза не пересчитана.';
+};
+$('rs').onclick=()=>{if($('rs').dataset.c){newDay();saveDay();renderLog();drawChart();render();$('rs').textContent='Сбросить дозу';delete $('rs').dataset.c}
+  else{$('rs').dataset.c=1;$('rs').textContent='Точно сбросить?';setTimeout(()=>{$('rs').textContent='Сбросить дозу';delete $('rs').dataset.c},4000)}};
+
+function drawChart(){
+  const cv=$('ch'),dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=120;
+  cv.width=W*dpr;cv.height=H*dpr;const x=cv.getContext('2d');x.scale(dpr,dpr);
+  const cs=getComputedStyle(document.documentElement),col=n=>cs.getPropertyValue(n).trim();
+  const lo=30,hi=110,pad=26,y=v=>H-14-(Math.max(lo,Math.min(hi,v))-lo)/(hi-lo)*(H-22);
+  x.clearRect(0,0,W,H);x.font='10px '+col('--f-mono');x.fillStyle=col('--muted');
+  [[50,col('--line')],[70,col('--warn')],[85,col('--bad')]].forEach(([v,c])=>{x.strokeStyle=c;x.setLineDash([3,3]);x.beginPath();x.moveTo(pad,y(v));x.lineTo(W,y(v));x.stroke();x.fillText(v,2,y(v)+3)});
+  x.setLineDash([]);
+  const nowM=Math.floor(Date.now()/60000),bw=(W-pad)/60;
+  day.hist.forEach(([m,v])=>{const i=59-(nowM-1-m);if(i<0||i>59)return;
+    x.fillStyle=v>=85?col('--bad'):v>=70?col('--warn'):col('--accent');
+    x.fillRect(pad+i*bw+1,y(v),Math.max(1,bw-2),H-14-y(v))});
+  x.fillStyle=col('--muted');x.fillText('−60 мин',pad,H-2);x.fillText('сейчас',W-38,H-2);
+}
+drawChart();render();window.addEventListener('resize',drawChart);
+setInterval(()=>{if(ctx)saveDay()},10000);
+})();
+</script>
+</body>
+</html>
