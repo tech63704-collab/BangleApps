@@ -119,6 +119,8 @@ p.note{font-size:13px;color:var(--muted);margin:8px 0 0;max-width:65ch}
     <input type="number" id="th1" step="1"></div>
   <div class="row"><label for="thp">Тревога: пик LAF ≥<small>резкий громкий звук; раз в 10 мин</small></label>
     <input type="number" id="thp" step="1"></div>
+  <div class="row"><label for="sumi">Сводка на часы каждые, мин<small>уровень, доза, остаток; 0 = выкл</small></label>
+    <input type="number" id="sumi" step="5" min="0"></div>
   <div class="row"><label>Уведомления<small id="nst">—</small></label><button id="np">Разрешить</button></div>
 </section>
 
@@ -145,7 +147,7 @@ const $=id=>document.getElementById(id);
 const LS={get(k,d){try{const v=localStorage.getItem('nd_'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
           set(k,v){try{localStorage.setItem('nd_'+k,JSON.stringify(v))}catch(e){}}};
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()};
-const cfg=Object.assign({off:110,cal:false,th1:85,thp:105},LS.get('cfg',{}));
+const cfg=Object.assign({off:110,cal:false,th1:85,thp:105,sumi:30},LS.get('cfg',{}));
 let day=LS.get('day',null);
 function newDay(){day={d:today(),dose:0,s85:0,hist:[],log:[],a50:false,a100:false};}
 if(!day||day.d!==today())newDay();
@@ -155,6 +157,8 @@ $('off').value=cfg.off;$('th1').value=cfg.th1;$('thp').value=cfg.thp;
 $('off').onchange=e=>{cfg.off=+e.target.value||0;cfg.cal=true;saveCfg();calUI()};
 $('th1').onchange=e=>{cfg.th1=+e.target.value||85;saveCfg()};
 $('thp').onchange=e=>{cfg.thp=+e.target.value||105;saveCfg()};
+$('sumi').value=cfg.sumi;
+$('sumi').onchange=e=>{cfg.sumi=Math.max(0,+e.target.value||0);saveCfg()};
 function calUI(){const c=$('calchip');c.textContent=cfg.cal?'откалиброван':'без калибровки';c.className='chip'+(cfg.cal?' on':' warn')}
 calUI();
 
@@ -188,7 +192,7 @@ function renderLog(){const l=$('log');l.innerHTML='';
   day.log.forEach(s=>{const d=document.createElement('div');d.textContent=s;l.appendChild(d)})}
 renderLog();
 $('tn').onclick=async()=>{if('Notification' in window&&Notification.permission==='default'){try{await Notification.requestPermission()}catch(e){}nUI()}
-  alertN('test','Шум: тест','Проверка доставки на часы',0)};
+  const s=stats();alertN('sum',s.title,s.body,0)};
 
 /* ---------- audio ---------- */
 const WORKLET=`class M extends AudioWorkletProcessor{
@@ -241,6 +245,20 @@ document.addEventListener('visibilitychange',async()=>{if(ctx&&document.visibili
 /* ---------- metering ---------- */
 let curMin=null,minE=0,minN=0,sesMax=-Infinity,recent=[],lastLaf=-Infinity,cal1s=[];
 const T=L=>480*60/Math.pow(2,(L-85)/3); // allowed seconds at L
+const fmtT=s=>s>=86400?'>24ч':s>=3600?(s/3600).toFixed(1)+'ч':Math.round(s/60)+'мин';
+let sesMin=Infinity,lastSum=Date.now();
+function stats(){
+  let e=0,n=0;recent.forEach(r=>{e+=r[0];n+=r[1]});
+  const l1=n?db(e/n):NaN,d=day.dose;
+  const lex=d>0.01?(85+10*Math.log10(d/100)).toFixed(0):'—';
+  const rem=d>=100?'исчерпано':(isFinite(l1)&&l1>=80)?fmtT(T(l1)*(100-d)/100):'∞';
+  const lv=isFinite(l1)?l1.toFixed(0):'—';
+  const zone=!isFinite(l1)?'нет данных':l1>=85?'ОПАСНО':l1>=70?'громко':l1>=55?'умеренно':'тихо';
+  const title=lv+' дБА '+zone+' · доза '+(d<10?d.toFixed(1):d.toFixed(0))+'%';
+  const body='LAeq1м '+lv+' | макс '+(isFinite(sesMax)?sesMax.toFixed(0):'—')+
+    ' | LEX8ч '+lex+' | до 100%: '+rem+' | ≥85: '+Math.floor(day.s85/60)+'мин'+(cfg.cal?'':' | без калибр.');
+  return {title,body};
+}
 function onBlock(b){
   if(day.d!==today()){newDay();renderLog()}
   const dt=b.n/fs, L=db(b.e/b.n), laf=db(b.fm);
@@ -255,13 +273,14 @@ function onBlock(b){
   if(curMin===null)curMin=mk;
   if(mk!==curMin){
     if(minN>fs*20){const lm=db(minE/minN);day.hist.push([curMin,+lm.toFixed(1)]);day.hist=day.hist.slice(-180);
-      if(lm>=cfg.th1)alertN('leq','Шум '+lm.toFixed(0)+' дБА','LAeq за минуту ≥ '+cfg.th1,15*60000);}
+      if(lm>=cfg.th1){const s=stats();alertN('leq','ШУМ '+lm.toFixed(0)+' дБА ≥'+cfg.th1,s.body,15*60000);}}
+    if(cfg.sumi>0&&Date.now()-lastSum>=cfg.sumi*60000){lastSum=Date.now();const s=stats();alertN('sum',s.title,s.body,0);}
     curMin=mk;minE=0;minN=0;saveDay();drawChart();
   }
   minE+=b.e;minN+=b.n;
-  if(laf>=cfg.thp)alertN('pk','Пик шума '+laf.toFixed(0)+' дБА','LAF ≥ '+cfg.thp,10*60000);
-  if(day.dose>=50&&!day.a50){day.a50=true;saveDay();alertN('d50','Шум: доза 50%','NIOSH 85 дБА/8ч',0)}
-  if(day.dose>=100&&!day.a100){day.a100=true;saveDay();alertN('d100','Шум: доза 100%','Дневная норма исчерпана, защити слух',0)}
+  if(laf>=cfg.thp)alertN('pk','ПИК '+laf.toFixed(0)+' дБА',stats().body,10*60000);
+  if(day.dose>=50&&!day.a50){day.a50=true;saveDay();alertN('d50','ДОЗА 50% (NIOSH)',stats().body,0)}
+  if(day.dose>=100&&!day.a100){day.a100=true;saveDay();alertN('d100','ДОЗА 100%: защити слух',stats().body,0)}
   render();
 }
 let lastR=0;
