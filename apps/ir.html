@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ИК-детектор</title>
+<meta name="theme-color" content="#14181a">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: camera view with detection overlay, status cells, controls, notes */
+:root{
+  --bg:#eef1ef;--panel:#fff;--fg:#162022;--muted:#5b6a6c;--line:#d3dbd9;
+  --accent:#0f7a72;--warn:#c07d0a;--bad:#c43b2b;--ir:#a23bd1;
+  --f-sans:"IBM Plex Sans",system-ui,sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,monospace;color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{--bg:#111517;--panel:#1a2023;--fg:#e4ecea;--muted:#8fa09e;--line:#2c3538;
+  --accent:#3fc2b5;--warn:#e9a53a;--bad:#f0604c;--ir:#cf7bf2;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--f-sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:max(12px,env(safe-area-inset-top,0px)) 32px}
+main{max-width:560px;margin:0 auto;display:grid;gap:14px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+h1{font-size:19px;margin:0;font-weight:600}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;font-weight:600}
+.chip{font:600 12px var(--f-mono);padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.chip.on{color:var(--accent);border-color:var(--accent)} .chip.ir{color:var(--ir);border-color:var(--ir)}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.view{position:relative;width:100%;aspect-ratio:4/3;max-width:100%;background:#000;border-radius:8px;overflow:hidden}
+.view video,.view canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.cell{border-top:1px solid var(--line);padding-top:8px;min-width:0}
+.cell small{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.cell b{font:600 20px var(--f-mono);font-variant-numeric:tabular-nums}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font:600 14px var(--f-sans);padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#log{font:12px var(--f-mono);color:var(--muted);display:grid;gap:3px;max-height:140px;overflow:auto}
+#msg{font-size:13px;color:var(--warn)}
+p.note{font-size:13px;color:var(--muted);margin:6px 0 0;max-width:65ch}
+.irc{color:var(--ir)} .bad{color:var(--bad)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>ИК-детектор</h1>
+  <span class="chip" id="st">остановлен</span>
+</header>
+
+<section>
+  <div class="view"><video id="v" playsinline muted></video><canvas id="ov"></canvas></div>
+  <div class="grid">
+    <div class="cell"><small>Мигающие</small><b id="nf">0</b></div>
+    <div class="cell"><small>ИК-пятна</small><b id="ns">0</b></div>
+    <div class="cell"><small>Кадров/с</small><b id="fps">0</b></div>
+  </div>
+</section>
+
+<section class="btns" style="background:none;border:0;padding:0">
+  <button class="primary" id="go">Старт</button>
+  <button id="sw">Камера: фронтальная</button>
+  <button id="tn">Тест уведомления</button>
+</section>
+<div id="msg"></div>
+
+<section>
+  <h2>Журнал</h2>
+  <div id="log"><span>пусто</span></div>
+</section>
+
+<section>
+  <h2>Как пользоваться</h2>
+  <p class="note"><b>Проверка камеры:</b> направь в объектив пульт от телевизора и жми кнопку. Если видишь фиолетово-белое мигание и красную рамку, эта камера видит ближний ИК (850–940 нм). Фронтальные камеры обычно видят лучше основных: у основных сильнее ИК-фильтр.</p>
+  <p class="note"><b>Поиск ИК-подсветки и камер:</b> выключи свет, медленно веди телефоном по комнате. Камеры видеонаблюдения и ночного видения светят на 850 нм, в кадре это тусклые фиолетовые точки (фиолетовая рамка). Любая яркая лампа в темноте тоже даст пятно, проверяй глазом: если глаз точку не видит, а камера видит — это ИК.</p>
+  <p class="note"><b>Красная рамка</b> — мигающий источник (пульт, ИК-маяк, датчик). <b>Фиолетовая</b> — устойчивое пятно с ИК-оттенком в темноте. Тепловое излучение (тело, батареи) камера телефона не видит.</p>
+</section>
+</main>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const v=$('v'),ov=$('ov'),W=160,H=120,B=10,GX=W/B,GY=H/B,NB=GX*GY,HN=30;
+const cv=document.createElement('canvas');cv.width=W;cv.height=H;const cx=cv.getContext('2d',{willReadFrequently:true});
+let stream=null,face='user',raf=0,lastF=0,frames=0,fpsT=performance.now(),swReg=null;
+const base=new Float32Array(NB),hist=new Uint8Array(NB*HN),flash=new Uint8Array(NB),spot=new Uint8Array(NB);let hi=0,primed=0;
+const lastA={};
+
+if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('noise-sw.js').then(r=>swReg=r).catch(()=>{});
+function log(s){const l=$('log');if(l.firstChild&&l.firstChild.tagName==='SPAN')l.innerHTML='';
+  const d=document.createElement('div');d.textContent=new Date().toTimeString().slice(0,8)+'  '+s;l.prepend(d);while(l.children.length>40)l.lastChild.remove();}
+async function notify(key,title,body,cool){
+  const t=Date.now();if(cool&&lastA[key]&&t-lastA[key]<cool)return;lastA[key]=t;log(title+' — '+body);
+  try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
+  if(!('Notification' in window))return;
+  if(Notification.permission==='default'){try{await Notification.requestPermission()}catch(e){}}
+  if(Notification.permission!=='granted'){$('msg').textContent='Уведомления не разрешены: тревога только на экране.';return}
+  const opt={body,tag:'ir-'+key,renotify:true,vibrate:[200,100,200]};
+  try{const r=swReg||(navigator.serviceWorker&&await navigator.serviceWorker.getRegistration());r?await r.showNotification(title,opt):new Notification(title,opt)}catch(e){}
+}
+$('tn').onclick=()=>notify('test','ИК-тест','Проверка доставки на часы',0);
+
+async function start(){
+  $('msg').textContent='';
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:face,width:{ideal:640},height:{ideal:480},frameRate:{ideal:30}},audio:false})}
+  catch(e){$('msg').textContent='Нет доступа к камере: '+e.message;return}
+  v.srcObject=stream;await v.play();
+  base.fill(0);hist.fill(0);primed=0;
+  $('st').textContent='ищет';$('st').className='chip on';$('go').textContent='Стоп';
+  try{const tr=stream.getVideoTracks()[0],cap=tr.getCapabilities?tr.getCapabilities():{};if(cap.torch)await tr.applyConstraints({advanced:[{torch:false}]})}catch(e){}
+  loop();
+}
+function stop(){cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;
+  $('st').textContent='остановлен';$('st').className='chip';$('go').textContent='Старт';const o=ov.getContext('2d');o.clearRect(0,0,ov.width,ov.height);}
+$('go').onclick=()=>stream?stop():start();
+$('sw').onclick=async()=>{face=face==='user'?'environment':'user';$('sw').textContent='Камера: '+(face==='user'?'фронтальная':'основная');if(stream){stop();await start();}};
+
+function loop(){
+  raf=requestAnimationFrame(loop);
+  const now=performance.now();if(now-lastF<30||v.readyState<2)return;lastF=now;frames++;
+  if(now-fpsT>=1000){$('fps').textContent=frames;frames=0;fpsT=now;}
+  cx.drawImage(v,0,0,W,H);const d=cx.getImageData(0,0,W,H).data;
+  let gsum=0;hi=(hi+1)%HN;let nf=0,ns=0;
+  for(let by=0;by<GY;by++)for(let bx=0;bx<GX;bx++){
+    const b=by*GX+bx;let mx=0,tint=0,sum=0;
+    for(let y=by*B;y<by*B+B;y++)for(let x=bx*B;x<bx*B+B;x++){
+      const p=(y*W+x)*4,r=d[p],g=d[p+1],bl=d[p+2],Y=(r+2*g+bl)>>2;sum+=Y;
+      if(Y>mx){mx=Y;tint=(r+bl)/2-g;}
+    }
+    const mean=sum/(B*B);gsum+=mean;
+    if(!primed)base[b]=mx;else base[b]+=(mx-base[b])*0.04;
+    const onS=mx>base[b]+35&&mx>120?1:0;hist[b*HN+hi]=onS;
+    let tr=0;for(let k=1;k<HN;k++)if(hist[b*HN+k]!==hist[b*HN+k-1])tr++;
+    flash[b]=primed&&tr>=4?1:0;
+    spot[b]=0;
+    if(flash[b])nf++;
+  }
+  const dark=gsum/NB<45;
+  if(dark){for(let by=0;by<GY;by++)for(let bx=0;bx<GX;bx++){
+    const b=by*GX+bx;let mx=0,tint=0;
+    for(let y=by*B;y<by*B+B;y++)for(let x=bx*B;x<bx*B+B;x++){const p=(y*W+x)*4,Y=(d[p]+2*d[p+1]+d[p+2])>>2;if(Y>mx){mx=Y;tint=(d[p]+d[p+2])/2-d[p+1];}}
+    if(mx>110&&tint>8&&!flash[b]){spot[b]=1;ns++;}
+  }}
+  primed=1;
+  $('nf').textContent=nf;$('ns').textContent=ns;$('nf').className=nf?'bad':'';$('ns').className=ns?'irc':'';
+  draw();
+  if(nf)notify('flash','ИК: мигающий источник',nf+' зон в кадре (пульт/маяк/датчик)',30000);
+  if(ns)notify('spot','ИК: пятно в темноте',ns+' зон, похоже на ИК-подсветку',60000);
+}
+function draw(){
+  const r=ov.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  if(ov.width!==Math.round(r.width*dpr)){ov.width=Math.round(r.width*dpr);ov.height=Math.round(r.height*dpr);}
+  const o=ov.getContext('2d'),sx=ov.width/W,sy=ov.height/H,cs=getComputedStyle(document.documentElement);
+  o.clearRect(0,0,ov.width,ov.height);o.lineWidth=3*dpr;
+  for(let b=0;b<NB;b++){if(!flash[b]&&!spot[b])continue;
+    const bx=b%GX,by=(b/GX)|0;o.strokeStyle=flash[b]?cs.getPropertyValue('--bad'):cs.getPropertyValue('--ir');
+    o.strokeRect(bx*B*sx,by*B*sy,B*sx,B*sy);}
+}
+})();
+</script>
+</body>
+</html>
