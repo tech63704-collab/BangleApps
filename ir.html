@@ -61,7 +61,7 @@ p.note{font-size:13px;color:var(--muted);margin:6px 0 0;max-width:65ch}
 
 <section class="btns" style="background:none;border:0;padding:0">
   <button class="primary" id="go">Старт</button>
-  <button id="sw">Камера: фронтальная</button>
+  <button id="sw">Камера: основная</button>
   <button id="tn">Тест уведомления</button>
 </section>
 <div id="msg"></div>
@@ -74,7 +74,7 @@ p.note{font-size:13px;color:var(--muted);margin:6px 0 0;max-width:65ch}
 <section>
   <h2>Как пользоваться</h2>
   <p class="note"><b>Держи телефон неподвижно</b> (лучше положи на стол): при движении кадра поиск приостанавливается, иначе любое смещение выглядит как мигание.</p>
-  <p class="note"><b>Проверка камеры:</b> положи телефон, направь в объектив пульт с 10–20 см, держи пульт неподвижно и жми кнопку. Если видишь фиолетово-белое мигание и красную рамку, эта камера видит ближний ИК (850–940 нм). Фронтальные камеры обычно видят лучше основных: у основных сильнее ИК-фильтр.</p>
+  <p class="note"><b>Проверка камеры:</b> положи телефон, направь в объектив пульт с 10–20 см, держи пульт неподвижно и жми кнопку. Если видишь фиолетово-белое мигание и красную рамку, эта камера видит ближний ИК (850–940 нм). На твоём Pova 6 ИК видит основная камера, фронтальная его отсекает.</p>
   <p class="note"><b>Поиск ИК-подсветки и камер:</b> выключи свет, медленно веди телефоном по комнате. Камеры видеонаблюдения и ночного видения светят на 850 нм, в кадре это тусклые фиолетовые точки (фиолетовая рамка). Любая яркая лампа в темноте тоже даст пятно, проверяй глазом: если глаз точку не видит, а камера видит — это ИК.</p>
   <p class="note"><b>Красная рамка</b> — мигающий источник (пульт, ИК-маяк, датчик). <b>Фиолетовая</b> — устойчивое пятно с ИК-оттенком в темноте. Тепловое излучение (тело, батареи) камера телефона не видит.</p>
 </section>
@@ -85,8 +85,8 @@ p.note{font-size:13px;color:var(--muted);margin:6px 0 0;max-width:65ch}
 const $=id=>document.getElementById(id);
 const v=$('v'),ov=$('ov'),W=160,H=120,B=10,GX=W/B,GY=H/B,NB=GX*GY,HN=30;
 const cv=document.createElement('canvas');cv.width=W;cv.height=H;const cx=cv.getContext('2d',{willReadFrequently:true});
-let stream=null,face='user',raf=0,lastF=0,frames=0,fpsT=performance.now(),swReg=null;
-const base=new Float32Array(NB),hist=new Uint8Array(NB*HN),flash=new Uint8Array(NB),spot=new Uint8Array(NB),prevM=new Float32Array(NB);let hi=0,primed=0,movingUntil=0;
+let stream=null,face='environment',raf=0,lastF=0,frames=0,fpsT=performance.now(),swReg=null;
+const base=new Float32Array(NB),hist=new Uint8Array(NB*HN),histIR=new Uint8Array(NB*HN),irFl=new Uint8Array(NB),prevX=new Float32Array(NB),flash=new Uint8Array(NB),spot=new Uint8Array(NB),prevM=new Float32Array(NB);let hi=0,primed=0,movingUntil=0;
 const lastA={};
 
 if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('noise-sw.js').then(r=>swReg=r).catch(()=>{});
@@ -131,22 +131,29 @@ function loop(){
       if(Y>mx){mx=Y;tint=(r+bl)/2-g;}
     }
     const mean=sum/(B*B);gsum+=mean;
-    if(primed&&Math.abs(mean-prevM[b])>8)changed++;           // scene/camera motion or exposure change
-    prevM[b]=mean;
+    const dMean=Math.abs(mean-prevM[b]),dMax=Math.abs(mx-prevX[b]);
+    if(primed&&dMean>8)changed++;                              // scene/camera motion or exposure change
+    prevM[b]=mean;prevX[b]=mx;
     if(!primed)base[b]=mx;else base[b]+=(mx-base[b])*0.04;
     // "on" = point-like bright spot: peak well above own baseline AND well above the block's mean
-    const onS=mx>base[b]+35&&mx>150&&mx-mean>45?1:0;
-    if(primed&&onS!==hist[b*HN+(hi+HN-1)%HN])toggles++;
+    // IR on a phone camera looks purple-white: R and B above G
+    const irLike=tint>10;
+    const onS=(irLike?mx>base[b]+20&&mx>90&&mx-mean>25:mx>base[b]+35&&mx>150&&mx-mean>45)?1:0;
+    if(primed&&onS!==hist[b*HN+(hi+HN-1)%HN]&&!irLike)toggles++;
+    // LED blink: the peak jumps while the block mean barely moves (tiny spot); scene motion moves both
+    histIR[b*HN+hi]=primed&&irLike&&dMax>30&&dMean<dMax*0.2?1:0;
     hist[b*HN+hi]=onS;
     let tr=0;for(let k=1;k<HN;k++)if(hist[b*HN+k]!==hist[b*HN+k-1])tr++;
     flash[b]=primed&&tr>=4?1:0;
+    let ic=0;for(let k=0;k<HN;k++)ic+=histIR[b*HN+k];
+    irFl[b]=flash[b]&&ic>=5?1:0;                              // purple flashing point = IR signature
     spot[b]=0;
     if(flash[b])nf++;
   }
   const tNow=performance.now();
   if(changed>NB*0.1||toggles>5)movingUntil=tNow+700;      // an LED toggles 1-2 blocks, motion toggles many
   const moving=tNow<movingUntil;
-  if(moving||nf>6){flash.fill(0);nf=0;}
+  if(moving||nf>6){nf=0;for(let b=0;b<NB;b++){flash[b]=irFl[b]&&!(nf>=4)?1:0;nf+=flash[b];}}
   $('st').textContent=moving?'движение: держи неподвижно':'ищет';$('st').className=moving?'chip':'chip on';
   const dark=gsum/NB<45&&!moving;
   if(dark){for(let by=0;by<GY;by++)for(let bx=0;bx<GX;bx++){
