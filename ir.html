@@ -73,7 +73,8 @@ p.note{font-size:13px;color:var(--muted);margin:6px 0 0;max-width:65ch}
 
 <section>
   <h2>Как пользоваться</h2>
-  <p class="note"><b>Проверка камеры:</b> направь в объектив пульт от телевизора и жми кнопку. Если видишь фиолетово-белое мигание и красную рамку, эта камера видит ближний ИК (850–940 нм). Фронтальные камеры обычно видят лучше основных: у основных сильнее ИК-фильтр.</p>
+  <p class="note"><b>Держи телефон неподвижно</b> (лучше положи на стол): при движении кадра поиск приостанавливается, иначе любое смещение выглядит как мигание.</p>
+  <p class="note"><b>Проверка камеры:</b> положи телефон, направь в объектив пульт с 10–20 см, держи пульт неподвижно и жми кнопку. Если видишь фиолетово-белое мигание и красную рамку, эта камера видит ближний ИК (850–940 нм). Фронтальные камеры обычно видят лучше основных: у основных сильнее ИК-фильтр.</p>
   <p class="note"><b>Поиск ИК-подсветки и камер:</b> выключи свет, медленно веди телефоном по комнате. Камеры видеонаблюдения и ночного видения светят на 850 нм, в кадре это тусклые фиолетовые точки (фиолетовая рамка). Любая яркая лампа в темноте тоже даст пятно, проверяй глазом: если глаз точку не видит, а камера видит — это ИК.</p>
   <p class="note"><b>Красная рамка</b> — мигающий источник (пульт, ИК-маяк, датчик). <b>Фиолетовая</b> — устойчивое пятно с ИК-оттенком в темноте. Тепловое излучение (тело, батареи) камера телефона не видит.</p>
 </section>
@@ -85,7 +86,7 @@ const $=id=>document.getElementById(id);
 const v=$('v'),ov=$('ov'),W=160,H=120,B=10,GX=W/B,GY=H/B,NB=GX*GY,HN=30;
 const cv=document.createElement('canvas');cv.width=W;cv.height=H;const cx=cv.getContext('2d',{willReadFrequently:true});
 let stream=null,face='user',raf=0,lastF=0,frames=0,fpsT=performance.now(),swReg=null;
-const base=new Float32Array(NB),hist=new Uint8Array(NB*HN),flash=new Uint8Array(NB),spot=new Uint8Array(NB);let hi=0,primed=0;
+const base=new Float32Array(NB),hist=new Uint8Array(NB*HN),flash=new Uint8Array(NB),spot=new Uint8Array(NB),prevM=new Float32Array(NB);let hi=0,primed=0,movingUntil=0;
 const lastA={};
 
 if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('noise-sw.js').then(r=>swReg=r).catch(()=>{});
@@ -122,7 +123,7 @@ function loop(){
   const now=performance.now();if(now-lastF<30||v.readyState<2)return;lastF=now;frames++;
   if(now-fpsT>=1000){$('fps').textContent=frames;frames=0;fpsT=now;}
   cx.drawImage(v,0,0,W,H);const d=cx.getImageData(0,0,W,H).data;
-  let gsum=0;hi=(hi+1)%HN;let nf=0,ns=0;
+  let gsum=0;hi=(hi+1)%HN;let nf=0,ns=0,changed=0,toggles=0;
   for(let by=0;by<GY;by++)for(let bx=0;bx<GX;bx++){
     const b=by*GX+bx;let mx=0,tint=0,sum=0;
     for(let y=by*B;y<by*B+B;y++)for(let x=bx*B;x<bx*B+B;x++){
@@ -130,14 +131,24 @@ function loop(){
       if(Y>mx){mx=Y;tint=(r+bl)/2-g;}
     }
     const mean=sum/(B*B);gsum+=mean;
+    if(primed&&Math.abs(mean-prevM[b])>8)changed++;           // scene/camera motion or exposure change
+    prevM[b]=mean;
     if(!primed)base[b]=mx;else base[b]+=(mx-base[b])*0.04;
-    const onS=mx>base[b]+35&&mx>120?1:0;hist[b*HN+hi]=onS;
+    // "on" = point-like bright spot: peak well above own baseline AND well above the block's mean
+    const onS=mx>base[b]+35&&mx>150&&mx-mean>45?1:0;
+    if(primed&&onS!==hist[b*HN+(hi+HN-1)%HN])toggles++;
+    hist[b*HN+hi]=onS;
     let tr=0;for(let k=1;k<HN;k++)if(hist[b*HN+k]!==hist[b*HN+k-1])tr++;
     flash[b]=primed&&tr>=4?1:0;
     spot[b]=0;
     if(flash[b])nf++;
   }
-  const dark=gsum/NB<45;
+  const tNow=performance.now();
+  if(changed>NB*0.1||toggles>5)movingUntil=tNow+700;      // an LED toggles 1-2 blocks, motion toggles many
+  const moving=tNow<movingUntil;
+  if(moving||nf>6){flash.fill(0);nf=0;}
+  $('st').textContent=moving?'движение: держи неподвижно':'ищет';$('st').className=moving?'chip':'chip on';
+  const dark=gsum/NB<45&&!moving;
   if(dark){for(let by=0;by<GY;by++)for(let bx=0;bx<GX;bx++){
     const b=by*GX+bx;let mx=0,tint=0;
     for(let y=by*B;y<by*B+B;y++)for(let x=bx*B;x<bx*B+B;x++){const p=(y*W+x)*4,Y=(d[p]+2*d[p+1]+d[p+2])>>2;if(Y>mx){mx=Y;tint=(d[p]+d[p+2])/2-d[p+1];}}
