@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>УФ-карта сцены</title>
+<meta name="theme-color" content="#14181a">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: UV index header, camera with model overlay, surface breakdown, legend, method notes */
+:root{
+  --bg:#eef1ef;--panel:#fff;--fg:#162022;--muted:#5b6a6c;--line:#d3dbd9;--accent:#0f7a72;--warn:#c07d0a;
+  --uv1:#3ea72d;--uv2:#e7c400;--uv3:#f18b00;--uv4:#e53210;--uv5:#b567a4;
+  --f-sans:"IBM Plex Sans",system-ui,sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,monospace;color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{--bg:#111517;--panel:#1a2023;--fg:#e4ecea;--muted:#8fa09e;--line:#2c3538;--accent:#3fc2b5;--warn:#e9a53a;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--f-sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:max(12px,env(safe-area-inset-top,0px)) 32px}
+main{max-width:560px;margin:0 auto;display:grid;gap:14px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+h1{font-size:19px;margin:0;font-weight:600}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;font-weight:600}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.uvi{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-family:var(--f-mono)}
+.uvi b{font-size:44px;line-height:1;font-weight:600}
+.uvi span{color:var(--muted);font-size:13px}
+.view{position:relative;width:100%;aspect-ratio:4/3;max-width:100%;background:#000;border-radius:8px;overflow:hidden;margin-top:10px}
+.view video,.view canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font:600 14px var(--f-sans);padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+table{border-collapse:collapse;width:100%;font:13px var(--f-mono)}
+td,th{text-align:left;padding:4px 6px;border-top:1px solid var(--line)}
+th{color:var(--muted);font-weight:400}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;border:1px solid var(--muted);margin-right:6px;vertical-align:middle}
+.legend{display:flex;gap:4px;flex-wrap:wrap;font:12px var(--f-mono);margin-top:8px}
+.legend span{padding:2px 6px;border-radius:4px;color:#000}
+#msg{font-size:13px;color:var(--warn)}
+p.note{font-size:13px;color:var(--muted);margin:6px 0 0;max-width:65ch}
+.big{font:600 20px var(--f-mono)}
+</style>
+</head>
+<body>
+<main>
+<header><h1>УФ-карта сцены</h1><span class="note" id="mode">модель, не измерение</span></header>
+
+<section>
+  <div class="uvi"><b id="uvi">–</b><span id="uvsrc">UV-индекс: загрузка…</span></div>
+  <div class="view"><video id="v" playsinline muted></video><canvas id="ov"></canvas></div>
+  <p class="note" id="sum">Нажми «Старт» и наведи основную камеру на сцену.</p>
+</section>
+
+<section class="btns" style="background:none;border:0;padding:0">
+  <button class="primary" id="go">Старт</button>
+  <button id="vw">Слой: отражённый УФ</button>
+  <button id="demo">Демо: UV 8</button>
+</section>
+<div id="msg"></div>
+
+<section>
+  <h2>Поверхности в кадре</h2>
+  <div style="overflow-x:auto"><table id="tb"><tr><th>Поверхность</th><th>Доля кадра</th><th>Отражает УФ</th><th>Отражённый UVI</th></tr></table></div>
+  <div class="legend">
+    <span style="background:var(--uv1)">&lt;3</span><span style="background:var(--uv2)">3–5</span>
+    <span style="background:var(--uv3)">6–7</span><span style="background:var(--uv4)">8–10</span><span style="background:var(--uv5)">11+</span>
+    <span style="background:#7fb7ff">небо: источник рассеянного УФ</span>
+  </div>
+</section>
+
+<section>
+  <h2>Как это считается</h2>
+  <p class="note">Камера телефона УФ не видит: его отсекают стекло и фильтр. Поэтому страница не показывает реальный УФ, а строит <b>модель</b>: распознаёт поверхности по цвету, яркости и положению в кадре и умножает текущий UV-индекс (Open-Meteo) на долю УФ, которую эта поверхность отражает.</p>
+  <p class="note">Доли отражения (эритемный УФ, ВОЗ/литература): свежий снег до 80%, морская пена ~25%, сухой песок ~15–20%, бетон ~10%, вода ~5–10%, асфальт ~4–8%, трава 2–3%. Около половины УФ у земли идёт не от солнца, а от всего неба, поэтому тень снижает дозу лишь примерно вдвое.</p>
+  <p class="note">Ограничения: белая стена легко примется за снег, голубая машина за небо, распознавание грубое. Используй как подсказку «где отражение добавляет дозу», а не как измерение.</p>
+</section>
+</main>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const v=$('v'),ov=$('ov'),W=96,H=72;
+const cv=document.createElement('canvas');cv.width=W;cv.height=H;const cx=cv.getContext('2d',{willReadFrequently:true});
+// surface classes: name, UV albedo, overlay class colour
+const C=[
+  {n:'небо',a:0,c:[127,183,255]},
+  {n:'снег/белое',a:0.8,c:[255,255,255]},
+  {n:'песок',a:0.18,c:[230,200,120]},
+  {n:'вода',a:0.08,c:[40,110,200]},
+  {n:'трава/зелень',a:0.025,c:[60,170,60]},
+  {n:'бетон/серое',a:0.10,c:[170,170,170]},
+  {n:'асфальт/тёмное',a:0.06,c:[60,60,60]},
+  {n:'прочее',a:0.05,c:[150,110,90]}
+];
+let uvi=null,demo=false,stream=null,timer=0,layer=0,cls=new Uint8Array(W*H);
+const UV=[[3,'--uv1'],[6,'--uv2'],[8,'--uv3'],[11,'--uv4'],[99,'--uv5']];
+const uvCol=x=>{const cs=getComputedStyle(document.documentElement);for(const[t,k]of UV)if(x<t)return cs.getPropertyValue(k).trim();};
+const hex=h=>{h=h.replace('#','');return[parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)]};
+
+async function loadUV(lat,lon,label){
+  try{
+    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=uv_index,is_day&timezone=auto');
+    const j=await r.json();uvi=j.current.uv_index;
+    $('uvsrc').textContent='UV-индекс сейчас · '+label+(j.current.is_day?'':' · ночь');
+  }catch(e){$('uvsrc').textContent='не удалось загрузить UV-индекс';uvi=null;}
+  showUV();
+}
+function showUV(){const u=demo?8:uvi;$('uvi').textContent=u==null?'–':u.toFixed(1);$('uvi').style.color=u==null?'':uvCol(u);
+  $('mode').textContent=demo?'ДЕМО: UV 8, модель':'модель, не измерение';}
+loadUV(50.28,57.21,'Актобе');
+if(navigator.geolocation)navigator.geolocation.getCurrentPosition(p=>loadUV(p.coords.latitude.toFixed(2),p.coords.longitude.toFixed(2),'твоё место'),()=>{},{timeout:8000});
+
+function hsv(r,g,b){r/=255;g/=255;b/=255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;let h=0;
+  if(d){if(mx===r)h=((g-b)/d)%6;else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;if(h<0)h+=360;}
+  return[h,mx?d/mx:0,mx];}
+function classify(r,g,b,y){
+  const[h,s,val]=hsv(r,g,b),top=y<H*0.5;
+  if(top&&((h>=185&&h<=250&&s>0.12&&val>0.45)||(val>0.78&&s<0.10)))return 0;      // sky: blue, or bright overcast up top
+  if(val>0.78&&s<0.12)return 1;                                                    // snow / white
+  if(h>=25&&h<=55&&s>=0.18&&s<=0.6&&val>0.5)return 2;                              // sand
+  if(h>=175&&h<=235&&s>0.2&&val>=0.15&&val<=0.65&&!top)return 3;                  // water
+  if(h>=65&&h<=165&&s>0.18&&val>0.12)return 4;                                     // vegetation
+  if(s<0.15&&val>=0.35&&val<=0.78)return 5;                                        // concrete / grey
+  if(val<0.35&&s<0.3)return 6;                                                     // asphalt / dark
+  return 7;
+}
+function tick(){
+  if(v.readyState<2)return;
+  cx.drawImage(v,0,0,W,H);const d=cx.getImageData(0,0,W,H).data;const cnt=new Array(C.length).fill(0);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const p=(y*W+x)*4,k=classify(d[p],d[p+1],d[p+2],y);cls[y*W+x]=k;cnt[k]++;}
+  draw();table(cnt);
+}
+function draw(){
+  const r=ov.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  if(ov.width!==Math.round(r.width*dpr)){ov.width=Math.round(r.width*dpr);ov.height=Math.round(r.height*dpr);}
+  const o=ov.getContext('2d'),img=o.createImageData(W,H),u=demo?8:(uvi||0);
+  for(let i=0;i<W*H;i++){const k=cls[i];let col,al;
+    if(layer===1){col=C[k].c;al=150;}
+    else if(k===0){col=[127,183,255];al=70;}
+    else{const rv=u*C[k].a;col=hex(uvCol(rv));al=rv<0.3?0:Math.min(170,50+rv*25);}
+    img.data[i*4]=col[0];img.data[i*4+1]=col[1];img.data[i*4+2]=col[2];img.data[i*4+3]=al;}
+  const tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;tmp.getContext('2d').putImageData(img,0,0);
+  o.imageSmoothingEnabled=true;o.clearRect(0,0,ov.width,ov.height);o.drawImage(tmp,0,0,ov.width,ov.height);
+}
+function table(cnt){
+  const u=demo?8:(uvi||0),N=W*H;let rows='<tr><th>Поверхность</th><th>Доля кадра</th><th>Отражает УФ</th><th>Отражённый UVI</th></tr>';
+  let gr=0,gn=0;
+  C.forEach((c,k)=>{const f=cnt[k]/N;if(f<0.01)return;
+    if(k)gr+=c.a*cnt[k],gn+=cnt[k];
+    rows+='<tr><td><span class="sw" style="background:rgb('+c.c+')"></span>'+c.n+'</td><td>'+Math.round(f*100)+'%</td><td>'+(k?Math.round(c.a*100)+'%':'источник')+'</td><td>'+(k?(u*c.a).toFixed(1):'–')+'</td></tr>';});
+  $('tb').innerHTML=rows;
+  const ga=gn?gr/gn:0;
+  $('sum').textContent=u<0.5?'Сейчас УФ почти нет: '+(uvi==null?'индекс не загружен':'низкое солнце или ночь')+'. Включи «Демо: UV 8», чтобы увидеть модель.'
+    :'Средняя отражательная способность земли в кадре '+Math.round(ga*100)+'% → лицо, обращённое к этой сцене, получает примерно +'+(u*ga).toFixed(1)+' к UV-индексу '+u.toFixed(1)+' от отражения.';
+}
+async function start(){
+  $('msg').textContent='';
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:640},height:{ideal:480}},audio:false})}
+  catch(e){$('msg').textContent='Нет доступа к камере: '+e.message;return}
+  v.srcObject=stream;await v.play();timer=setInterval(tick,400);$('go').textContent='Стоп';
+}
+function stop(){clearInterval(timer);if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('go').textContent='Старт';}
+$('go').onclick=()=>stream?stop():start();
+$('vw').onclick=()=>{layer=1-layer;$('vw').textContent='Слой: '+(layer?'поверхности':'отражённый УФ');draw();};
+$('demo').onclick=()=>{demo=!demo;$('demo').textContent=demo?'Реальный UV':'Демо: UV 8';showUV();};
+})();
+</script>
+</body>
+</html>
