@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Радиометр на камере</title>
+<meta name="theme-color" content="#111517">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: count rate readout, hit map, background comparison, pseudo-spectrum, method notes */
+:root{
+  --bg:#eef1ef;--panel:#fff;--fg:#162022;--muted:#5b6a6c;--line:#d3dbd9;--accent:#0f7a72;--warn:#c07d0a;--bad:#c43b2b;--hit:#ffe14d;
+  --f-sans:"IBM Plex Sans",system-ui,sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,monospace;color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{--bg:#111517;--panel:#1a2023;--fg:#e4ecea;--muted:#8fa09e;--line:#2c3538;--accent:#3fc2b5;--warn:#e9a53a;--bad:#f0604c;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--f-sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:max(12px,env(safe-area-inset-top,0px)) 32px}
+main{max-width:560px;margin:0 auto;display:grid;gap:14px}
+h1{font-size:19px;margin:0;font-weight:600}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;font-weight:600}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.rate{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-family:var(--f-mono)}
+.rate b{font-size:44px;line-height:1;font-weight:600}
+.rate span{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:10px;font:13px var(--f-mono)}
+.grid div{border-top:1px solid var(--line);padding-top:4px}
+.grid small{display:block;color:var(--muted);font-family:var(--f-sans)}
+canvas{display:block;width:100%;max-width:100%;border-radius:8px;background:#000}
+#map{aspect-ratio:4/3;margin-top:10px}
+#spec{aspect-ratio:3/1;background:transparent}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font:600 14px var(--f-sans);padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+label{font-size:13px;color:var(--muted)}
+#st{font:13px var(--f-mono);color:var(--muted)}
+#st.warn{color:var(--warn)}#st.bad{color:var(--bad)}
+p.note{font-size:13px;color:var(--muted);margin:6px 0 0;max-width:65ch}
+#cmp{font:600 14px var(--f-mono);margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+<h1>Радиометр на камере</h1>
+
+<section>
+  <div class="rate"><b id="cpm">–</b><span>событий/мин (последние 60 с)</span></div>
+  <div class="grid">
+    <div><small>Всего событий</small><span id="tot">0</span></div>
+    <div><small>Среднее за замер</small><span id="avg">–</span></div>
+    <div><small>Время замера</small><span id="tm">0:00</span></div>
+    <div><small>Горячие пиксели</small><span id="hot">0</span></div>
+  </div>
+  <canvas id="map"></canvas>
+  <div id="st">Закрой основную камеру изолентой в 2–3 слоя и нажми «Старт».</div>
+</section>
+
+<section class="btns" style="background:none;border:0;padding:0">
+  <button class="primary" id="go">Старт</button>
+  <button id="bgb">Записать как фон</button>
+  <button id="snd">Щелчки: выкл</button>
+  <button id="rst">Сброс</button>
+</section>
+
+<section>
+  <h2>Сравнение с фоном</h2>
+  <div id="cmp">Фон не записан. Сначала 10+ минут без источника, затем «Записать как фон».</div>
+  <p class="note">Превышение считается в сигмах по Пуассону. Меньше 2σ означает «не отличить от фона», больше 3σ уверенно указывает на источник.</p>
+</section>
+
+<section>
+  <h2>Псевдоспектр (яркость событий)</h2>
+  <canvas id="spec"></canvas>
+  <p class="note">По горизонтали суммарная яркость пятна, по вертикали число событий. Это <b>не энергия кванта</b>: тонкий кремний матрицы поглощает только часть энергии. Длинные яркие треки обычно оставляют бета-частицы или мюоны, одиночные тусклые точки — гамма-кванты.</p>
+  <label for="thr">Порог срабатывания: <span id="thv">30</span> (меньше даёт больше чувствительности и больше ложных)</label>
+  <input id="thr" type="range" min="12" max="80" value="30">
+</section>
+
+<section>
+  <h2>Как пользоваться</h2>
+  <p class="note">1. Заклей основную камеру изолентой в 2–3 слоя, чтобы не проходил свет. Выключи автоповорот, положи телефон камерой вниз или вверх и не трогай его. 2. Первые 10 с страница учит шумовую карту матрицы. Пиксели, которые срабатывают повторно в одном месте, помечаются горячими и исключаются. 3. Замерь фон 10–20 минут и нажми «Записать как фон». 4. Положи источник вплотную к камере, сбрось счёт и замеряй столько же.</p>
+  <p class="note">Ограничения. Браузер может применять шумоподавление, которое стирает одиночные точки, поэтому чувствительность ниже, чем в нативных приложениях с RAW-доступом. Нагрев матрицы повышает шум. Альфа-частицы через изоленту не проходят. Это индикатор «есть ли превышение над фоном», а не дозиметр: перевод в мкЗв/ч требует калибровки на известном источнике.</p>
+</section>
+</main>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const map=$('map'),mx=map.getContext('2d'),spec=$('spec'),sx=spec.getContext('2d');
+const v=document.createElement('video');v.playsInline=true;v.muted=true;
+const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});
+let stream=null,W=0,H=0,mean=null,hitsAt=null,hot=null,frames=0,running=false;
+let thr=30,events=[],total=0,t0=0,liveMs=0,lastT=0,prev=[],hotN=0,bg=null,sound=false,actx=null,wake=null;
+const SPB=24,spBins=new Array(SPB).fill(0),WARM=10000;
+
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function click(){if(!sound)return;if(!actx)actx=new AudioContext();
+  const o=actx.createOscillator(),g=actx.createGain();o.type='square';o.frequency.value=1800;
+  g.gain.setValueAtTime(0.25,actx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+0.02);
+  o.connect(g).connect(actx.destination);o.start();o.stop(actx.currentTime+0.03);}
+
+async function start(){
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720},frameRate:{ideal:15}}});}
+  catch(e){setSt('Нет доступа к камере: '+e.message,'bad');return;}
+  const tr=stream.getVideoTracks()[0];let info='';
+  try{const c=tr.getCapabilities?tr.getCapabilities():{},adv={};
+    if(c.exposureMode&&c.exposureMode.includes('manual')){adv.exposureMode='manual';
+      if(c.exposureTime)adv.exposureTime=Math.min(c.exposureTime.max,1000);  // units 100 µs → ≤100 ms
+      if(c.iso)adv.iso=c.iso.max;}
+    if(c.whiteBalanceMode&&c.whiteBalanceMode.includes('manual'))adv.whiteBalanceMode='manual';
+    if(c.torch)adv.torch=false;
+    if(Object.keys(adv).length){await tr.applyConstraints({advanced:[adv]});
+      const s=tr.getSettings();info=' · экспозиция '+(s.exposureTime?(s.exposureTime/10).toFixed(0)+' мс':'авто')+(s.iso?' · ISO '+s.iso:'');}
+    else info=' · ручная экспозиция недоступна';
+  }catch(e){info=' · ручная экспозиция не применилась';}
+  v.srcObject=stream;await v.play();
+  W=Math.min(v.videoWidth,1280);H=Math.round(v.videoHeight*W/v.videoWidth);cv.width=W;cv.height=H;
+  if(!mean||mean.length!==W*H)reset(true);
+  map.width=W/2;map.height=H/2;
+  running=true;lastT=performance.now();if(!t0)t0=Date.now();
+  try{wake=await navigator.wakeLock.request('screen');}catch(e){}
+  $('go').textContent='Стоп';setSt('Калибровка шума матрицы, не двигай телефон…'+info);
+  loop();
+}
+function stop(){running=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('go').textContent='Старт';
+  if(wake){wake.release().catch(()=>{});wake=null;}setSt('Остановлено.');}
+function reset(full){
+  if(full&&W){mean=new Float32Array(W*H);hitsAt=new Uint8Array(W*H);hot=new Uint8Array(W*H);hotN=0;frames=0;}
+  events=[];total=0;liveMs=0;t0=Date.now();spBins.fill(0);prev=[];
+  mx.fillStyle='#000';mx.fillRect(0,0,map.width,map.height);ui();drawSpec();
+}
+function setSt(t,c){$('st').textContent=t;$('st').className=c||'';}
+
+function loop(){
+  if(!running)return;
+  const next=()=>v.requestVideoFrameCallback?v.requestVideoFrameCallback(()=>{process();loop();}):requestAnimationFrame(()=>{process();loop();});
+  next();
+}
+function process(){
+  const now=performance.now(),dt=now-lastT;lastT=now;
+  cx.drawImage(v,0,0,W,H);const d=cx.getImageData(0,0,W,H).data;frames++;
+  const warm=frames<40,a=warm?0.15:0.02;let sum=0,cand=[];
+  for(let i=0,p=0;i<W*H;i++,p+=4){
+    const r=d[p],g=d[p+1],b=d[p+2],y=r>g?(r>b?r:b):(g>b?g:b);sum+=y;
+    const df=y-mean[i];
+    if(!warm&&df>thr&&!hot[i]){if(cand.length<400)cand.push(i);else cand.length=401;}
+    else mean[i]+=a*df;
+  }
+  const avgY=sum/(W*H);
+  if(avgY>25){setSt('Свет попадает на матрицу (средняя яркость '+avgY.toFixed(0)+'). Добавь слой изоленты.','warn');prev=[];return;}
+  if(cand.length>400){setSt('Слишком много срабатываний в кадре: засветка или скачок экспозиции, кадр пропущен.','warn');return;}
+  if(warm){return;}
+  liveMs+=Math.min(dt,500);
+  // cluster candidates
+  const seen=new Set(),evs=[];
+  for(const i of cand){if(seen.has(i))continue;
+    const st=[i];seen.add(i);let n=0,s=0,cxs=0,cys=0;
+    while(st.length&&n<200){const j=st.pop();n++;const y=j/W|0,x=j-y*W,pv=Math.max(d[j*4],d[j*4+1],d[j*4+2])-mean[j];s+=pv;cxs+=x;cys+=y;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=W||yy>=H)continue;
+        const k=yy*W+xx;if(seen.has(k)||hot[k])continue;const q=k*4,dv=Math.max(d[q],d[q+1],d[q+2])-mean[k];
+        if(dv>thr*0.4){seen.add(k);st.push(k);}}}
+    evs.push({x:cxs/n,y:cys/n,n,s,i});}
+  const cur=[];
+  for(const e of evs){
+    // same spot as previous frame → afterglow of one hit, not a new event
+    if(prev.some(p=>Math.abs(p.x-e.x)<3&&Math.abs(p.y-e.y)<3)){cur.push(e);continue;}
+    cur.push(e);
+    // repeated hits at the same pixel → hot pixel, mask it
+    if(++hitsAt[e.i]>=3){for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const k=e.i+dy*W+dx;if(k>=0&&k<W*H&&!hot[k]){hot[k]=1;hotN++;}}continue;}
+    total++;events.push(Date.now());click();
+    const b=Math.min(SPB-1,Math.floor(Math.log2(1+e.s/thr)*4));spBins[b]++;
+    mx.fillStyle=css('--hit');const r=Math.max(1.5,Math.sqrt(e.n));mx.beginPath();mx.arc(e.x/2,e.y/2,r,0,7);mx.fill();
+  }
+  prev=cur;
+  // slow fade of the hit map
+  if(frames%30===0){mx.fillStyle='rgba(0,0,0,0.04)';mx.fillRect(0,0,map.width,map.height);}
+  if(frames%8===0){ui();drawSpec();
+    setSt('Идёт замер. Экран не гаснет, телефон держи неподвижно.');}
+}
+function ui(){
+  const now=Date.now();events=events.filter(t=>now-t<600000);
+  const last=events.filter(t=>now-t<60000).length,min=liveMs/60000;
+  const win=Math.min(1,min);
+  $('cpm').textContent=min<0.05?'–':(last/win).toFixed(1);
+  $('tot').textContent=total;$('avg').textContent=min>0.1?(total/min).toFixed(2)+' ± '+(Math.sqrt(total)/min).toFixed(2):'–';
+  const s=Math.round(liveMs/1000);$('tm').textContent=(s/60|0)+':'+String(s%60).padStart(2,'0');$('hot').textContent=hotN;
+  if(bg&&min>0.5){const r=total/min,er=Math.sqrt(total)/min,eb=Math.sqrt(bg.n)/bg.min,ex=r-bg.r,sg=ex/Math.sqrt(er*er+eb*eb||1);
+    $('cmp').textContent='Фон '+bg.r.toFixed(2)+'/мин · сейчас '+r.toFixed(2)+'/мин · ×'+(bg.r>0?(r/bg.r).toFixed(1):'∞')+' · '+sg.toFixed(1)+'σ '+(sg>3?'— превышение':sg>2?'— возможно превышение':'— не отличить от фона');
+    $('cmp').style.color=sg>3?css('--bad'):sg>2?css('--warn'):'';}
+}
+function drawSpec(){
+  const dpr=devicePixelRatio||1,w=spec.clientWidth*dpr,h=spec.clientHeight*dpr;if(!w)return;spec.width=w;spec.height=h;
+  const m=Math.max(1,...spBins),bw=w/SPB;sx.clearRect(0,0,w,h);sx.fillStyle=css('--accent');
+  spBins.forEach((c,i)=>{const bh=(h-14*dpr)*c/m;sx.fillRect(i*bw+1,h-14*dpr-bh,bw-2,bh);});
+  sx.fillStyle=css('--muted');sx.font=(10*dpr)+'px IBM Plex Mono, monospace';sx.fillText('тусклые',2,h-2);
+  sx.textAlign='right';sx.fillText('яркие / треки',w-2,h-2);
+}
+$('go').onclick=()=>running?stop():start();
+$('rst').onclick=()=>reset(false);
+$('bgb').onclick=()=>{const min=liveMs/60000;if(min<2){setSt('Для фона нужно хотя бы 2 минуты, лучше 10–20.','warn');return;}
+  bg={r:total/min,n:total,min};$('cmp').textContent='Фон записан: '+bg.r.toFixed(2)+' ± '+(Math.sqrt(total)/min).toFixed(2)+'/мин. Теперь «Сброс», источник к камере и новый замер.';$('cmp').style.color='';};
+$('snd').onclick=()=>{sound=!sound;$('snd').textContent='Щелчки: '+(sound?'вкл':'выкл');if(sound&&!actx)actx=new AudioContext();};
+$('thr').oninput=e=>{thr=+e.target.value;$('thv').textContent=thr;};
+document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&running&&!wake){try{wake=await navigator.wakeLock.request('screen');}catch(e){}}else wake=null;});
+mx.fillStyle='#000';mx.fillRect(0,0,map.width,map.height);drawSpec();
+})();
+</script>
+</body>
+</html>
