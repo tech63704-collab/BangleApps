@@ -1,0 +1,168 @@
+<phyphox version="1.14" locale="ru">
+  <title>Тахометр по звуку</title>
+  <category>Акустика</category>
+  <description>
+Бесконтактный тахометр: микрофон, преобразование Фурье с окном Ханна, поиск самого сильного пика в заданном диапазоне частот и пересчёт в обороты в минуту.
+
+об/мин = пик (Гц) × 60 ÷ число лопастей.
+
+Держи телефон в 10–30 см сбоку от лопастей, не в потоке воздуха. Диапазон поиска сузь так, чтобы в него не попадал сетевой гул 100 Гц, если он мешает. Если не уверен, какой пик основной, смотри второе значение: оно для случая, когда самый громкий пик — вторая гармоника прохода лопастей.
+  </description>
+  <data-containers>
+    <container size="65536">recording</container>
+    <container size="1">rate</container>
+    <container size="1">n</container>
+    <container size="1">n/2</container>
+    <container size="1">n/2+1</container>
+    <container size="1">rate/2</container>
+    <container size="1">df</container>
+    <container size="65536">u</container>
+    <container size="65536">win</container>
+    <container size="65536">fftX</container>
+    <container size="65536">fftY</container>
+    <container size="32769">frequency</container>
+    <container size="32768">halfF</container>
+    <container size="32768">halfX</container>
+    <container size="32768">halfY</container>
+    <container size="32768">mag</container>
+    <container size="32768">fF</container>
+    <container size="32768">mF</container>
+    <container size="1">fpk</container>
+    <container size="1">rpm</container>
+    <container size="1">rpm2</container>
+    <container size="1">rpm1</container>
+    <container size="1" init="3">blades</container>
+    <container size="1" init="20">fmin</container>
+    <container size="1" init="400">fmax</container>
+  </data-containers>
+  <input>
+    <audio rate="48000">
+      <output>recording</output>
+      <output component="rate">rate</output>
+    </audio>
+  </input>
+  <views>
+    <view label="Тахометр">
+      <value label="Обороты" unit="об/мин" precision="0" size="2">
+        <input>rpm</input>
+      </value>
+      <value label="Если пик = 2-я гармоника" unit="об/мин" precision="0">
+        <input>rpm2</input>
+      </value>
+      <value label="Без деления на лопасти (1×)" unit="об/мин" precision="0">
+        <input>rpm1</input>
+      </value>
+      <value label="Найденный пик" unit="Гц" precision="2">
+        <input>fpk</input>
+      </value>
+      <separator height="1"/>
+      <edit label="Число лопастей" default="3" signed="false" min="1">
+        <output>blades</output>
+      </edit>
+      <edit label="Искать от" unit="Гц" default="20" signed="false">
+        <output>fmin</output>
+      </edit>
+      <edit label="Искать до" unit="Гц" default="400" signed="false">
+        <output>fmax</output>
+      </edit>
+      <separator height="1"/>
+      <graph label="Спектр в диапазоне поиска" labelX="Частота" unitX="Гц" labelY="Амплитуда" unitY="у.е." logY="true">
+        <input axis="x">fF</input>
+        <input axis="y">mF</input>
+      </graph>
+      <value label="Разрешение" unit="Гц" precision="2">
+        <input>df</input>
+      </value>
+    </view>
+  </views>
+  <analysis requireFill="recording">
+    <count>
+      <input clear="false">recording</input>
+      <output>n</output>
+    </count>
+    <divide>
+      <input clear="false">n</input>
+      <input type="value">2</input>
+      <output>n/2</output>
+    </divide>
+    <add>
+      <input clear="false">n/2</input>
+      <input type="value">1</input>
+      <output>n/2+1</output>
+    </add>
+    <divide>
+      <input clear="false">rate</input>
+      <input type="value">2</input>
+      <output>rate/2</output>
+    </divide>
+    <divide>
+      <input clear="false">rate</input>
+      <input clear="false">n</input>
+      <output>df</output>
+    </divide>
+    <ramp>
+      <input as="start" type="value">0</input>
+      <input as="stop" type="value">1</input>
+      <input as="length" clear="false">n</input>
+      <output>u</output>
+    </ramp>
+    <formula formula="[1_]*(0.5-0.5*cos(6.283185307*[2_]))">
+      <input>recording</input>
+      <input>u</input>
+      <output>win</output>
+    </formula>
+    <fft>
+      <input>win</input>
+      <output as="re">fftX</output>
+      <output as="im">fftY</output>
+    </fft>
+    <ramp>
+      <input as="start" type="value">0</input>
+      <input as="stop" clear="false">rate/2</input>
+      <input as="length" clear="false">n/2+1</input>
+      <output>frequency</output>
+    </ramp>
+    <subrange>
+      <input type="value" as="from">1</input>
+      <input clear="false" as="to">n/2</input>
+      <input as="in">frequency</input>
+      <input as="in">fftX</input>
+      <input as="in">fftY</input>
+      <output>halfF</output>
+      <output>halfX</output>
+      <output>halfY</output>
+    </subrange>
+    <formula formula="sqrt([1_]*[1_]+[2_]*[2_])">
+      <input>halfX</input>
+      <input>halfY</input>
+      <output>mag</output>
+    </formula>
+    <rangefilter>
+      <input>halfF</input>
+      <input as="min" clear="false">fmin</input>
+      <input as="max" clear="false">fmax</input>
+      <input>mag</input>
+      <output>fF</output>
+      <output>mF</output>
+    </rangefilter>
+    <max>
+      <input as="y" clear="false">mF</input>
+      <input as="x" clear="false">fF</input>
+      <output as="position">fpk</output>
+    </max>
+    <formula formula="[1]*60/max([2],1)">
+      <input clear="false">fpk</input>
+      <input clear="false">blades</input>
+      <output>rpm</output>
+    </formula>
+    <formula formula="[1]*30/max([2],1)">
+      <input clear="false">fpk</input>
+      <input clear="false">blades</input>
+      <output>rpm2</output>
+    </formula>
+    <formula formula="[1]*60">
+      <input clear="false">fpk</input>
+      <output>rpm1</output>
+    </formula>
+  </analysis>
+</phyphox>
